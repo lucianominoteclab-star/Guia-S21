@@ -4,47 +4,193 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Chat Siglo 21 — Asesoras</title>
-
-  <!-- Tipografía -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/lunr/lunr.min.js"></script>
+  <script type="module">
+    import * as webllm from "https://esm.run/@mlc-ai/web-llm";
+    window.webllm = webllm;
+  </script>
 
   <style>
-    body { font-family: Inter, sans-serif; background: #F5F5F5; margin:0; padding:0; }
-    .wrap { max-width: 900px; margin: 20px auto; background:white; border-radius:12px;
-            padding:20px; box-shadow:0 4px 18px rgba(0,0,0,0.12); }
-    h1 { margin:0 0 20px; color:#2E2E2E; }
-    #chat { height:420px; overflow-y:auto; border:1px solid #ddd; padding:10px;
-            border-radius:8px; background:#fafafa; }
-    .msg { margin-bottom:12px; padding:10px; border-radius:10px; max-width:80%; }
-    .user { background:#eaeaea; }
-    .bot  { background:#39A866; color:white; }
-    .row { display:flex; gap:10px; margin-top:10px; }
-    input { flex:1; padding:12px; border-radius:8px; border:1px solid #ccc; }
-    button { padding:12px 18px; border:none; background:#39A866; color:white;
-             border-radius:8px; font-weight:bold; cursor:pointer; }
+    :root { --green-1: #00953B; --green-2: #026B28; --dark: #333; --light: #f9f9f9; }
+    body { font-family: 'Inter', sans-serif; background: #eef1f5; margin: 0; padding: 20px; display: flex; justify-content: center; height: 100vh; box-sizing: border-box; }
+    .main-card { background: white; width: 100%; max-width: 900px; height: 90%; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); display: flex; overflow: hidden; flex-direction: column; }
+    
+    /* Header */
+    header { background: var(--green-1); padding: 15px 20px; display: flex; align-items: center; gap: 15px; color: white; }
+    .logo-box { width: 40px; height: 40px; background: white; border-radius: 8px; color: var(--green-1); font-weight: 900; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+    .header-info h1 { margin: 0; font-size: 18px; }
+    .header-info p { margin: 0; font-size: 12px; opacity: 0.9; }
+
+    /* Chat Area */
+    #chat-container { flex: 1; padding: 20px; overflow-y: auto; background: #fff; display: flex; flex-direction: column; gap: 15px; }
+    .msg { max-width: 80%; padding: 12px 16px; border-radius: 12px; font-size: 15px; line-height: 1.5; animation: fadeIn 0.3s ease; }
+    .msg.user { align-self: flex-end; background: #f0f2f5; color: var(--dark); border-bottom-right-radius: 2px; }
+    .msg.bot { align-self: flex-start; background: #e8f5e9; color: #1a1a1a; border-left: 4px solid var(--green-1); border-bottom-left-radius: 2px; }
+    .system-msg { text-align: center; color: #888; font-size: 13px; margin: 10px 0; font-style: italic; }
+
+    /* Input Area */
+    .input-area { padding: 20px; background: #f9f9f9; border-top: 1px solid #eee; display: flex; gap: 10px; }
+    input { flex: 1; padding: 14px; border: 1px solid #ddd; border-radius: 10px; font-size: 16px; outline: none; transition: 0.2s; }
+    input:focus { border-color: var(--green-1); }
+    button { background: var(--green-1); color: white; border: none; padding: 0 24px; border-radius: 10px; font-weight: 600; cursor: pointer; transition: 0.2s; }
+    button:hover { background: var(--green-2); }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
   </style>
 </head>
-
 <body>
-<div class="wrap">
 
-  <h1>Chat Siglo 21 — Asesoras</h1>
+<div class="main-card">
+  <header>
+    <div class="logo-box">21</div>
+    <div class="header-info">
+      <h1>Asistente Virtual - Siglo 21</h1>
+      <p>Consultas sobre gestión, aranceles y cursado</p>
+    </div>
+  </header>
 
-  <div id="chat"></div>
-
-  <div class="row">
-    <input id="question" placeholder="Escribí tu consulta...">
-    <button id="sendBtn">Enviar</button>
+  <div id="chat-container">
+    <div class="system-msg">Iniciando sistema... Por favor espere.</div>
   </div>
 
+  <div class="input-area">
+    <input id="userIn" type="text" placeholder="Escribe tu consulta aquí..." disabled>
+    <button id="sendBtn" disabled>Enviar</button>
+  </div>
 </div>
 
-<!-- Librerías -->
-<script src="https://cdn.jsdelivr.net/npm/lunr/lunr.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/webllm/dist/webllm.min.js"></script>
+<script type="module">
+  // Configuración
+  const SELECTED_MODEL = "Phi-3.5-mini-instruct-q4f32_1-MLC";
+  let engine = null;
+  let chunks = []; 
+  let lunrIndex = null;
 
-<!-- Tu lógica -->
-<script src="script.js"></script>
+  const chatContainer = document.getElementById('chat-container');
+  const inputField = document.getElementById('userIn');
+  const sendBtn = document.getElementById('sendBtn');
+
+  // 1. Cargar archivo de texto y procesarlo
+  async function initSystem() {
+    addSystemMsg("Cargando base de conocimientos...");
+    
+    try {
+      const response = await fetch('data/info.txt');
+      if (!response.ok) throw new Error("No se encontró data/info.txt");
+      const fullText = await response.text();
+      
+      // Procesar texto en trozos (chunks)
+      const rawChunks = fullText.split(/\n\n+/); // Divide por doble salto de línea
+      chunks = rawChunks.map((txt, i) => ({
+        id: "id" + i,
+        text: txt.trim()
+      })).filter(c => c.text.length > 20); // Filtra vacíos
+
+      addSystemMsg(`Base cargada: ${chunks.length} fragmentos de información.`);
+
+      // Crear índice de búsqueda
+      lunrIndex = lunr(function () {
+        this.ref('id');
+        this.field('text');
+        chunks.forEach(function (doc) { this.add(doc) }, this);
+      });
+
+      // Inicializar IA
+      addSystemMsg("Descargando modelo de IA (esto pasa solo la primera vez)...");
+      const { CreateMLCEngine } = window.webllm;
+      engine = await CreateMLCEngine(SELECTED_MODEL, {
+        initProgressCallback: (report) => {
+          console.log(report.text);
+          if(report.progress === 1) addSystemMsg("Modelo listo. ¡Ya puedes preguntar!");
+        }
+      });
+
+      // Habilitar interfaz
+      inputField.disabled = false;
+      sendBtn.disabled = false;
+      inputField.focus();
+      addBotMsg("¡Hola! Soy el asistente de Siglo 21. Tengo toda la información cargada. ¿En qué puedo ayudarte?");
+
+    } catch (err) {
+      addSystemMsg("❌ ERROR CRÍTICO: " + err.message);
+      console.error(err);
+    }
+  }
+
+  // 2. Funciones de Chat
+  function addBotMsg(text) {
+    const div = document.createElement('div');
+    div.className = 'msg bot';
+    div.innerText = text; // Usar innerText por seguridad o innerHTML si confías en el output
+    chatContainer.appendChild(div);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+  }
+
+  function addUserMsg(text) {
+    const div = document.createElement('div');
+    div.className = 'msg user';
+    div.innerText = text;
+    chatContainer.appendChild(div);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+  }
+
+  function addSystemMsg(text) {
+    const div = document.createElement('div');
+    div.className = 'system-msg';
+    div.innerText = text;
+    chatContainer.appendChild(div);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+  }
+
+  // 3. Lógica de Respuesta (RAG)
+  async function handleSend() {
+    const question = inputField.value.trim();
+    if (!question) return;
+    
+    inputField.value = '';
+    addUserMsg(question);
+    addSystemMsg("Pensando...");
+
+    // Búsqueda de contexto
+    const searchResults = lunrIndex.search(question);
+    const topDocs = searchResults.slice(0, 3).map(r => chunks.find(c => c.id === r.ref).text);
+    const context = topDocs.join("\n---\n");
+
+    const prompt = `
+      Eres un asistente útil de la Universidad Siglo 21. 
+      Usa la siguiente información de contexto para responder la pregunta del usuario.
+      Si la respuesta no está en el contexto, di "No tengo esa información en los documentos."
+      
+      CONTEXTO:
+      ${context}
+
+      PREGUNTA:
+      ${question}
+    `;
+
+    try {
+      const reply = await engine.chat.completions.create({
+        messages: [{ role: "user", content: prompt }]
+      });
+      // Borrar el mensaje de "Pensando..."
+      chatContainer.lastElementChild.remove();
+      addBotMsg(reply.choices[0].message.content);
+    } catch (e) {
+      addBotMsg("Error al generar respuesta: " + e.message);
+    }
+  }
+
+  // 4. Eventos
+  sendBtn.addEventListener('click', handleSend);
+  inputField.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') handleSend();
+  });
+
+  // Arrancar
+  initSystem();
+</script>
 
 </body>
 </html>
