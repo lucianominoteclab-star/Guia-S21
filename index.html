@@ -1,145 +1,117 @@
 <!doctype html>
 <html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Chat Siglo 21 — Serveless (Vercel)</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/lunr/lunr.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Asistente Siglo 21</title>
 
-  <style>
-    :root { --green-1: #00953B; --green-2: #026B28; --bg: #f4f7f6; }
-    body { font-family: 'Inter', sans-serif; background: var(--bg); margin: 0; display: flex; justify-content: center; height: 100vh; }
-    .main-card { background: white; width: 100%; max-width: 800px; height: 95vh; margin-top: 2.5vh; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); display: flex; flex-direction: column; overflow: hidden; }
-    
-    header { background: var(--green-1); padding: 16px; color: white; display: flex; gap: 12px; align-items: center; }
-    .logo { font-weight: 800; font-size: 20px; background: white; color: var(--green-1); padding: 5px 10px; border-radius: 6px; }
-    .h-text h1 { margin: 0; font-size: 16px; }
-    .h-text p { margin: 0; font-size: 12px; opacity: 0.9; }
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/lunr/lunr.min.js"></script>
 
-    #chat-container { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; scroll-behavior: smooth; }
-    .msg { max-width: 85%; padding: 12px 16px; border-radius: 10px; font-size: 15px; line-height: 1.5; word-wrap: break-word; }
-    .msg.user { align-self: flex-end; background: #eef1f5; color: #333; border-bottom-right-radius: 2px; }
-    .msg.bot { align-self: flex-start; background: #e6f4ea; color: #0d3d1e; border-bottom-left-radius: 2px; border-left: 4px solid var(--green-1); }
-    .msg strong { color: var(--green-2); }
-    
-    .input-area { padding: 15px; background: white; border-top: 1px solid #eee; display: flex; gap: 10px; }
-    input { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; outline: none; }
-    input:focus { border-color: var(--green-1); }
-    button { background: var(--green-1); color: white; border: none; padding: 0 20px; border-radius: 8px; font-weight: 600; cursor: pointer; }
-    button:hover { background: var(--green-2); }
-    button:disabled { background: #ccc; cursor: not-allowed; }
+<script type="module">
+  import { CreateMLCEngine } from "https://esm.run/@mlc-ai/web-llm";
+  window.CreateMLCEngine = CreateMLCEngine;
+</script>
 
-    .typing { font-size: 12px; color: #888; margin-left: 20px; display: none; font-style: italic; }
-  </style>
+<style>
+body { margin:0; font-family:Inter,sans-serif; background:#f4f6f8; display:flex; justify-content:center; height:100vh; }
+.app { width:100%; max-width:900px; background:white; display:flex; flex-direction:column; }
+header { background:#00953B; color:white; padding:14px 18px; font-weight:600; }
+#chat { flex:1; padding:16px; overflow-y:auto; }
+.msg { margin-bottom:12px; padding:10px 14px; border-radius:10px; max-width:80%; }
+.user { background:#eee; margin-left:auto; }
+.bot { background:#e7f4ea; border-left:4px solid #00953B; }
+.system { text-align:center; color:#777; font-size:13px; }
+footer { display:flex; padding:12px; border-top:1px solid #ddd; gap:10px; }
+input { flex:1; padding:12px; border-radius:8px; border:1px solid #ccc; }
+button { background:#00953B; color:white; border:none; padding:12px 18px; border-radius:8px; cursor:pointer; }
+</style>
 </head>
+
 <body>
+<div class="app">
+<header>Asistente Siglo 21</header>
 
-<div class="main-card">
-  <header>
-    <div class="logo">21</div>
-    <div class="h-text">
-      <h1>Asistente Académico</h1>
-      <p>Servidor Rápido y Seguro (Modo Vercel)</p>
-    </div>
-  </header>
-
-  <div id="chat-container">
-    <div class="msg bot">Hola. Cargando base de datos local...</div>
-  </div>
-  <div class="typing" id="typingIndicator">Consultando API de Gemini de forma segura...</div>
-
-  <div class="input-area">
-    <input id="userIn" type="text" placeholder="Escribí tu pregunta..." autofocus disabled>
-    <button id="sendBtn" disabled>Enviar</button>
-  </div>
+<div id="chat">
+  <div class="system">Cargando base de datos…</div>
 </div>
 
-<script>
-  let chunks = [];
-  let lunrIndex = null;
-  const chatBox = document.getElementById('chat-container');
-  const input = document.getElementById('userIn');
-  const sendBtn = document.getElementById('sendBtn');
-  const indicator = document.getElementById('typingIndicator');
+<footer>
+  <input id="q" placeholder="Escribí tu consulta…" disabled>
+  <button id="send" disabled>Enviar</button>
+</footer>
+</div>
 
-  // Funciones de utilidad para el chat
-  function addMsg(html, role) {
-    const div = document.createElement('div');
-    div.className = `msg ${role}`;
-    div.innerHTML = html;
-    chatBox.appendChild(div);
-    chatBox.scrollTop = chatBox.scrollHeight;
-  }
-  
-  // Cargar datos locales al iniciar
-  window.onload = async () => {
-    try {
-      const res = await fetch('data/info.txt');
-      if(!res.ok) throw new Error("Falta data/info.txt");
-      const text = await res.text();
-      
-      const raw = text.split(/\n\n+/);
-      chunks = raw.map((t,i) => ({id: "id"+i, text: t.trim()})).filter(c=>c.text.length>10);
-      
-      lunrIndex = lunr(function(){
-        this.ref('id');
-        this.field('text');
-        chunks.forEach(function(doc){ this.add(doc) }, this);
-      });
-      
-      addMsg(`Base de datos cargada: ${chunks.length} fragmentos. ¡Ya puedes preguntar!`, 'bot');
-      input.disabled = false;
-      sendBtn.disabled = false;
-      input.focus();
-    } catch(e) {
-      addMsg("Error crítico: No se encontró la base de datos local (data/info.txt).", "bot");
-    }
-  };
+<script type="module">
+const chat = document.getElementById("chat");
+const input = document.getElementById("q");
+const btn = document.getElementById("send");
 
-  async function handleSend() {
-    const q = input.value.trim();
-    if(!q || !lunrIndex) return;
-    
-    input.value = '';
-    addMsg(q, 'user');
-    indicator.style.display = 'block';
+function add(text, cls) {
+  const d = document.createElement("div");
+  d.className = "msg " + cls;
+  d.textContent = text;
+  chat.appendChild(d);
+  chat.scrollTop = chat.scrollHeight;
+}
 
-    // 1. Búsqueda Local (RAG)
-    const results = lunrIndex.search(q);
-    const context = results.slice(0, 4).map(r => chunks.find(c => c.id === r.ref).text).join("\n\n---\n\n");
+let chunks = [];
+let idx = null;
+let engine = null;
 
-    // 2. Llamada a la Función Serverless (Proxy Seguro)
-    try {
-        const response = await fetch('/api/chat', { // <-- Llama al archivo api/chat.js
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                question: q,
-                context: context
-            })
-        });
+async function init() {
+  const txt = await fetch("data/info.txt").then(r=>r.text());
 
-        const data = await response.json();
-        
-        if (data.error) {
-            addMsg(`Error del servidor: ${data.error}`, 'bot');
-            return;
-        }
+  const parts = txt.split(/\n\n+/).filter(p=>p.length>40);
+  chunks = parts.map((t,i)=>({ id:"c"+i, text:t }));
 
-        const answer = data.text || "Error al interpretar la respuesta. (No hubo texto)";
-        addMsg(marked.parse(answer), 'bot'); 
+  idx = lunr(function(){
+    this.ref("id");
+    this.field("text");
+    chunks.forEach(d=>this.add(d));
+  });
 
-    } catch(err) {
-      addMsg("Error de conexión con el servidor.", 'bot');
-    } finally {
-      indicator.style.display = 'none';
-    }
-  }
+  add("Base cargada. Descargando modelo IA…", "system");
 
-  document.getElementById('sendBtn').onclick = handleSend;
-  input.onkeydown = (e) => { if(e.key === 'Enter') handleSend(); };
+  engine = await window.CreateMLCEngine(
+    "Phi-3.5-mini-instruct-q4f32_1-MLC"
+  );
+
+  add("Listo. Podés preguntar 👍", "system");
+  input.disabled = false;
+  btn.disabled = false;
+}
+
+async function send() {
+  const q = input.value.trim();
+  if(!q) return;
+  input.value = "";
+  add(q,"user");
+
+  const res = idx.search(q).slice(0,3)
+    .map(r=>chunks.find(c=>c.id===r.ref).text)
+    .join("\n");
+
+  const prompt =
+`Respondé solo con esta información.
+Si no figura, decí que no está en los documentos.
+
+${res}
+
+Pregunta: ${q}`;
+
+  const out = await engine.chat.completions.create({
+    messages:[{role:"user",content:prompt}]
+  });
+
+  add(out.choices[0].message.content,"bot");
+}
+
+btn.onclick = send;
+input.onkeydown = e => e.key==="Enter" && send();
+
+init();
 </script>
+
 </body>
 </html>
