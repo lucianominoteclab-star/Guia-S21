@@ -41,7 +41,12 @@ const chat = document.getElementById("chat");
 const input = document.getElementById("q");
 const btn = document.getElementById("send");
 
-function add(text, cls) {
+// 🔥 FORZAR INPUT ACTIVO SI O SI
+input.disabled = false;
+btn.disabled = false;
+input.readOnly = false;
+
+function add(text, cls="system") {
   const d = document.createElement("div");
   d.className = cls === "system" ? "system" : "msg " + cls;
   d.textContent = text;
@@ -49,7 +54,6 @@ function add(text, cls) {
   chat.scrollTop = chat.scrollHeight;
 }
 
-// --- UTILIDADES SEMÁNTICAS SIMPLES ---
 function normalize(text) {
   return text.toLowerCase()
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -67,23 +71,41 @@ function similarity(a, b) {
 let chunks = [];
 
 async function init() {
-  const txt = await fetch("data/info.txt").then(r => r.text());
+  try {
+    add("Inicializando sistema…");
 
-  chunks = txt
-    .split(/\n\n+/)
-    .map(t => t.trim())
-    .filter(t => t.length > 40)
-    .map(t => ({
-      raw: t,
-      norm: normalize(t)
-    }));
+    // 🔍 TEST 1
+    add("Probando escritura en input…");
+    input.focus();
 
-  add(`Base cargada (${chunks.length} secciones). Podés preguntar.`, "system");
+    // 🔍 TEST 2
+    add("Cargando data/info.txt …");
+    const resp = await fetch("data/info.txt", { cache: "no-store" });
+    if (!resp.ok) throw new Error("No se pudo cargar data/info.txt");
+
+    const txt = await resp.text();
+    add("Archivo cargado OK");
+
+    chunks = txt
+      .split(/\n\n+/)
+      .map(t => t.trim())
+      .filter(t => t.length > 40)
+      .map(t => ({
+        raw: t,
+        norm: normalize(t)
+      }));
+
+    add(`Base cargada (${chunks.length} secciones). Listo para usar.`);
+  } catch (e) {
+    add("❌ ERROR: " + e.message);
+    console.error(e);
+  }
 }
 
 function send() {
   const q = input.value.trim();
   if (!q) return;
+
   input.value = "";
   add(q, "user");
 
@@ -101,17 +123,21 @@ function send() {
   });
 
   if (!best || bestScore < 0.05) {
-    add("No encontré información relacionada en los documentos.", "bot");
+    add("No encontré información relacionada.", "bot");
   } else {
     add(best.raw, "bot");
   }
 }
 
-btn.onclick = send;
-input.onkeydown = e => e.key === "Enter" && send();
+btn.addEventListener("click", send);
+input.addEventListener("keydown", e => {
+  if (e.key === "Enter") send();
+});
 
-init();
+// 🔥 ARRANQUE GARANTIZADO
+setTimeout(init, 100);
 </script>
+
 
 </body>
 </html>
