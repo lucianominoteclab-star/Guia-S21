@@ -6,12 +6,6 @@
 <title>Asistente Siglo 21</title>
 
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/lunr/lunr.min.js"></script>
-
-<script type="module">
-  import { CreateMLCEngine } from "https://esm.run/@mlc-ai/web-llm";
-  window.CreateMLCEngine = CreateMLCEngine;
-</script>
 
 <style>
 body { margin:0; font-family:Inter,sans-serif; background:#f4f6f8; display:flex; justify-content:center; height:100vh; }
@@ -33,82 +27,88 @@ button { background:#00953B; color:white; border:none; padding:12px 18px; border
 <header>Asistente Siglo 21</header>
 
 <div id="chat">
-  <div class="system">Cargando base de datos…</div>
+  <div class="system">Cargando base de información…</div>
 </div>
 
 <footer>
-  <input id="q" placeholder="Escribí tu consulta…" disabled>
-  <button id="send" disabled>Enviar</button>
+  <input id="q" placeholder="Escribí tu consulta…">
+  <button id="send">Enviar</button>
 </footer>
 </div>
 
-<script type="module">
+<script>
 const chat = document.getElementById("chat");
 const input = document.getElementById("q");
 const btn = document.getElementById("send");
 
 function add(text, cls) {
   const d = document.createElement("div");
-  d.className = "msg " + cls;
+  d.className = cls === "system" ? "system" : "msg " + cls;
   d.textContent = text;
   chat.appendChild(d);
   chat.scrollTop = chat.scrollHeight;
 }
 
-let chunks = [];
-let idx = null;
-let engine = null;
-
-async function init() {
-  const txt = await fetch("data/info.txt").then(r=>r.text());
-
-  const parts = txt.split(/\n\n+/).filter(p=>p.length>40);
-  chunks = parts.map((t,i)=>({ id:"c"+i, text:t }));
-
-  idx = lunr(function(){
-    this.ref("id");
-    this.field("text");
-    chunks.forEach(d=>this.add(d));
-  });
-
-  add("Base cargada. Descargando modelo IA…", "system");
-
-  engine = await window.CreateMLCEngine(
-    "Phi-3.5-mini-instruct-q4f32_1-MLC"
-  );
-
-  add("Listo. Podés preguntar 👍", "system");
-  input.disabled = false;
-  btn.disabled = false;
+// --- UTILIDADES SEMÁNTICAS SIMPLES ---
+function normalize(text) {
+  return text.toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, "");
 }
 
-async function send() {
+function similarity(a, b) {
+  const sa = new Set(a.split(" "));
+  const sb = new Set(b.split(" "));
+  let inter = 0;
+  sa.forEach(w => sb.has(w) && inter++);
+  return inter / Math.max(sa.size, sb.size);
+}
+
+let chunks = [];
+
+async function init() {
+  const txt = await fetch("data/info.txt").then(r => r.text());
+
+  chunks = txt
+    .split(/\n\n+/)
+    .map(t => t.trim())
+    .filter(t => t.length > 40)
+    .map(t => ({
+      raw: t,
+      norm: normalize(t)
+    }));
+
+  add(`Base cargada (${chunks.length} secciones). Podés preguntar.`, "system");
+}
+
+function send() {
   const q = input.value.trim();
-  if(!q) return;
+  if (!q) return;
   input.value = "";
-  add(q,"user");
+  add(q, "user");
 
-  const res = idx.search(q).slice(0,3)
-    .map(r=>chunks.find(c=>c.id===r.ref).text)
-    .join("\n");
+  const nq = normalize(q);
 
-  const prompt =
-`Respondé solo con esta información.
-Si no figura, decí que no está en los documentos.
+  let best = null;
+  let bestScore = 0;
 
-${res}
-
-Pregunta: ${q}`;
-
-  const out = await engine.chat.completions.create({
-    messages:[{role:"user",content:prompt}]
+  chunks.forEach(c => {
+    const score = similarity(nq, c.norm);
+    if (score > bestScore) {
+      bestScore = score;
+      best = c;
+    }
   });
 
-  add(out.choices[0].message.content,"bot");
+  if (!best || bestScore < 0.05) {
+    add("No encontré información relacionada en los documentos.", "bot");
+  } else {
+    add(best.raw, "bot");
+  }
 }
 
 btn.onclick = send;
-input.onkeydown = e => e.key==="Enter" && send();
+input.onkeydown = e => e.key === "Enter" && send();
 
 init();
 </script>
