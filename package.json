@@ -1,7 +1,0 @@
-{
-  "name": "guia-s21-serverless",
-  "type": "module",
-  "dependencies": {
-    "@google/genai": "latest" 
-  }
-}
